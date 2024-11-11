@@ -1,16 +1,20 @@
-#' BTC1877 Assignment 2
-#' Tenzin Gyaltsen
+---
+title: "Tenzin_Gyaltsen_BTC1877_Assignment_2"
+author: "T.G"
+date: "2024-10-07"
+output: pdf_document
+---
 
-#### Preparation ####
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(comment = NA)
+knitr::opts_chunk$set(warning = FALSE)
+knitr::opts_chunk$set(
+  fig.width = 5,
+  fig.height = 4,
+  fig.align = "center"
+)
 # Install and load required packages.
-install.packages("dplyr")
-install.packages("tidyr")
-install.packages("funModeling")
-install.packages("ggplot2")
-install.packages("glmnet")
-install.packages("pROC")
-install.packages("tree")
-install.packages("survival")
 library(funModeling)
 library(dplyr)
 library(tidyr)
@@ -19,7 +23,11 @@ library(glmnet)
 library(pROC)
 library(tree)
 library(survival)
+```
 
+# A. Regression
+### A1 - Read and explore the data, assessing and assigning NAs. Also rename variables.
+``` {r A1, echo = FALSE, results = "hide"}
 # Read data and briefly explore.
 working <- read.csv("bc_data.csv", header = FALSE)
 dim(working)
@@ -34,19 +42,10 @@ status(working)
 # Lymph node status is the only variable with zeroes and NAs.
 
 # Rename variables.
-names(working) <- c("id", "outcome", "time", "radius_mean", "texture_mean",
-                    "perimeter_mean", "area_mean", "smoothness_mean", 
-                    "compactness_mean", "concavity_mean", "concave_points_mean",
-                    "symmetry_mean", "fractal_dimension_mean", "radius_se",
-                    "texture_se", "perimeter_se", "area_se", "smoothness_se",
-                    "compactness_se", "concavity_se", "concave_points_se",
-                    "symmetry_se", "fractal_dimension_se", "radius_worst",
-                    "texture_worst", "perimeter_worst", "area_worst",
-                    "smoothness_worst", "compactness_worst", "concavity_worst",
-                    "concave_points_worst", "symmetry_worst", "fractal_dimension_worst",
-                    "tumour_size", "lymph_nodes")
-
-#### Regression ####
+names(working) <- c("id", "outcome", "time", "radius_mean", "texture_mean", "perimeter_mean", "area_mean", "smoothness_mean", "compactness_mean", "concavity_mean", "concave_points_mean", "symmetry_mean", "fractal_dimension_mean", "radius_se", "texture_se", "perimeter_se", "area_se", "smoothness_se", "compactness_se", "concavity_se", "concave_points_se", "symmetry_se", "fractal_dimension_se", "radius_worst", "texture_worst", "perimeter_worst", "area_worst", "smoothness_worst", "compactness_worst", "concavity_worst", "concave_points_worst", "symmetry_worst", "fractal_dimension_worst", "tumour_size", "lymph_nodes")
+```
+### A2i - Refactor lymph nodes variable based on assignment criteria:
+``` {r A2i, echo = FALSE, results = "hide"}
 # Consider only patients with recurrence.
 workingr <- working[which(working$outcome == "R"),]
 # Consider only mean feature values.
@@ -56,7 +55,9 @@ workingr$lymph_nodes <- ifelse(is.na(workingr$lymph_nodes), NA,
                         ifelse(workingr$lymph_nodes == "0", 0, 
                                ifelse(as.integer(workingr$lymph_nodes) < 4, "1-3",
                                       "4 or more")))
-
+```
+### A2ii - Generate descriptive statistics for categorical and numerical variables.
+``` {r A2ii, echo = FALSE, results = "hide"}
 # Generate descriptive statistics for numerical variables.
 num_variables <- c(3:14)
 num_table <- workingr %>%
@@ -66,12 +67,14 @@ num_table <- workingr %>%
     max = ~max(.x, na.rm = T), iqr = ~IQR(.x, na.rm = T)))) %>%
   pivot_longer(everything(), names_to = c("Variable", ".value"), 
                names_pattern = "(.*)_(.*)$")
-num_table
 
 # Generate descriptive statistics for one categorical variable.
 cat_table <- workingr %>%
   count(lymph_nodes) %>%
   mutate(proportion = n/sum(n))
+```
+``` {r A2iii, echo = FALSE, warning = FALSE, message = FALSE}
+num_table
 cat_table
 
 #' Create histogram for each numerical variable and bar chart for each
@@ -93,7 +96,11 @@ for (var in names(workingr)) {
     print(barchart)
   }
 }
+```
+Continuous variables to be used for prediction are somewhat normally distributed. Do not transform variables. 
 
+### A3i - Train lasso model for prediction of time to recurrence.
+``` {r A3i, echo = FALSE, results = "hide"}
 #' Create matrix of feature values. Note that observation with NA 
 #' automatically removed.
 x <- model.matrix(time ~ radius_mean + texture_mean + perimeter_mean +
@@ -105,16 +112,22 @@ x <- model.matrix(time ~ radius_mean + texture_mean + perimeter_mean +
 y <- workingr$time[!is.na(workingr$lymph_nodes)]
 # Train model, but first remove observation with NA.
 lasso.mod <- glmnet(x, y, family = "gaussian")
-
+```
+### A3ii - Plot predictor weights as a function of lambda.
+``` {r A3ii, echo = FALSE}
 # Plot the results against different values of log(lambda).
 plot(lasso.mod, label = T, xvar = "lambda")
-# Coefficients not standardized due to differing units of predictors.
+print("Note that coefficients not standardized due to differing units of predictors.")
+```
+The plot shows the predictor weights as lambda (or log of lambda) changes in the context of lasso regularization. Note that the weights are not standardized since the predictor units are different. An optimal value of lambda that allows the model to make accurate predictions without overfitting can be calculated using cross-validation. From the plot, we can see a few predictors whose weights do not shrink to zero as quickly as the other predictors (with increasing lambda).
 
+### A4i - Decide on an optimal value for lambda using cross-validation.
+``` {r A4i, echo = FALSE, results = "hide", fig.show = "hide"}
 # Decide on an optimal value for lambda using cross-validation.
 set.seed(123)
 cv.lasso <- cv.glmnet(x, y, nfolds = 5)
-#'Plot MSE as a function of lambda (log lambda) to qualitatively assess
-#' for optimal lambda value.
+#'Optional to plot MSE as a function of lambda (log lambda) to
+#' qualitatively assess for optimal lambda value.
 plot(cv.lasso)
 # Extract lambda values that gives lowest cross-validated MSE.
 cv.lasso$lambda.min
@@ -122,11 +135,23 @@ cv.lasso$lambda.min
 print(cv.lasso)
 # Examine value of features that stay in model when using optimal lambda.
 coef.min <- coef(cv.lasso, s = "lambda.min")
-coef.min
 # Print the list using Dr. Mitsakakis' "awkward" code.
 rownames(coef.min)[coef.min[,1] != 0][-1]
+```
+### A4ii - Create plot of MSE as a function of lambda and print optimal lambda value and significant predictors of time to recurrence.
+``` {r A4ii, echo = FALSE}
+# Plot MSE for different values of log lambda.
+plot(cv.lasso)
+# Print optimal lambda.
+cv.lasso$lambda.min
+# Print the list of predictors using Dr. Mitsakakis' "awkward" code.
+rownames(coef.min)[coef.min[,1] != 0][-1]
+```
+The coefficients for the optimal lambda value are -1.847190, 44.457887 and 3.481176 for the predictors radius_mean, smoothness_mean and symmetry_mean, respectively. 
 
-#### Classification ####
+# B. Classification
+### B1i - Clean data as before, but do not remove non-recurrence patients, recode outcome variable values and remove observations with NAs for use in matrix creation and classification.
+``` {r B1i, echo = FALSE, results = "hide"}
 #'Make same data cleaning adjustments as before, but do not remove 
 #' non-recurrence observations.
 workingc <- working[,c(1:13,34,35)]
@@ -143,6 +168,9 @@ workingc$lymph_nodes <- factor(workingc$lymph_nodes)
 
 # Remove observations with NAs as this will interfere with matrix creation.
 workingc <- workingc[complete.cases(workingc),]
+```
+### B1ii - Create training/test sets and lasso model.
+``` {r B1ii, echo = FALSE, results = "hide"}
 #'Split the data into training and test, of equal size. Note that the seed
 #' will have to be changed 4 more times, so come back to this code to
 #' complete that particular question.
@@ -159,14 +187,20 @@ y <- workingc$outcome[train.I]
 
 # Create lasso model, specifying "binomial".
 lasso.mod <- glmnet(x, y, family = "binomial")
+```
+### B1iii - Plot coefficients of predictors based on different values of lambda.
+``` {r B1iii, echo = FALSE}
 # Plot coefficients of predictors for different values of lambda.
 plot(lasso.mod, label = T, xvar = "lambda")
+```
+### B1iv - Cross-validate based on deviance to find optimal lambda and extract predictors for that lambda.
+``` {r B1iv, echo = FALSE, results = "hide"}
 #'Cross-validate model using AUC. Default of 10 folds is too large to 
 #' reliably calculate AUC, so deviance used instead.
 cv.lasso <- cv.glmnet(x, y, alpha = 1, family = "binomial", 
                       type.measure = "auc")
-#'Plot deviances for different lambda values and find minimum lambda that 
-#'provides lowest deviance.
+#'Optional to plot deviances for different lambda values and find 
+#' minimum lambda that provides lowest deviance.
 plot(cv.lasso)
 cv.lasso$lambda.min
 
@@ -174,43 +208,53 @@ cv.lasso$lambda.min
 coef.min <- coef(cv.lasso, s = "lambda.min")
 coef.min
 rownames(coef.min)[coef.min[,1] != 0][-1]
-
+```
+### B1v - Test model on test set using optimal lambda
+``` {r B1v, echo = FALSE, results = "hide", fig.show = "hide", message = FALSE}
 #'Test the model using test set and minimum lambda and plot predicted
 #' probabilities using histogram.
 pred.lasso <- as.numeric(predict(lasso.mod, 
-                                 newx = model.matrix(outcome ~ radius_mean + texture_mean + perimeter_mean + 
-                                                       area_mean + smoothness_mean + compactness_mean + 
-                                                       concavity_mean + concave_points_mean + symmetry_mean +
-                                                       fractal_dimension_mean + tumour_size + lymph_nodes, 
-                                                     workingc)[-train.I,-1], 
-                                 s = cv.lasso$lambda.min, 
-                                 type = "response"))
+                                 newx = model.matrix(outcome ~ radius_mean + texture_mean + perimeter_mean + area_mean + smoothness_mean + compactness_mean + concavity_mean + concave_points_mean + symmetry_mean + fractal_dimension_mean + tumour_size + lymph_nodes, workingc)[-train.I,-1],s = cv.lasso$lambda.min,type = "response"))
+# Optional to view test predictions distribution.
 hist(pred.lasso)
-# Plot the ROC curve.
+
+# Obtain ROC.
 myroc_lasso <- roc(outcome ~ pred.lasso, data = workingc[-train.I,])
-plot(myroc_lasso)
 # Extract the AUC, a measure of discrimination.
 auc.lasso <- myroc_lasso$auc
+```
+### B1vi - Print optimal lambda and significant predictors and plot ROC with AUC for lasso model for predicting recurrence.
+``` {r B1vi, echo = FALSE}
+cv.lasso$lambda.min
+rownames(coef.min)[coef.min[,1] != 0][-1]
+plot(myroc_lasso)
 auc.lasso
-
+```
+### B1vii - Create unpruned tree model, get probabilites for test set and obtain ROC with associated AUC.
+``` {r B1vii, echo = FALSE, results = "hide", message = FALSE}
 # Next create unpruned tree model.
 tree.mod <- tree(outcome ~ radius_mean + texture_mean + perimeter_mean + 
                    area_mean + smoothness_mean + compactness_mean + 
                    concavity_mean + concave_points_mean + symmetry_mean +
                    fractal_dimension_mean + tumour_size + lymph_nodes, 
                  data = workingc, subset = train.I)
-# Plot tree.
-plot(tree.mod)
-text(tree.mod, pretty = 0, cex = 0.35)
-
 # Get probabilities for test set based on unpruned tree model.
 preds.unpruned <- predict(tree.mod, newdata = workingc[-train.I,], type = "vector")
 pred.probs.unpruned <- as.numeric(preds.unpruned[,2])
 # Create and plot ROC curve and get AUC for unpruned tree.
 myroc_unpruned <- roc(outcome ~ pred.probs.unpruned, data = workingc[-train.I,])
+```
+### B1viii - Plot tree, ROC and AUC.
+``` {r B1viii, echo = FALSE}
+# Plot tree.
+plot(tree.mod)
+text(tree.mod, pretty = 0, cex = 0.35)
+# Plot ROC and AUC.
 plot(myroc_unpruned)
 myroc_unpruned$auc
-
+```
+### B1ix - Prune tree by determining best size via cross validation, and obtain ROC and AUC for pruned tree.
+``` {r B1ix, echo = FALSE, results = "hide", message = FALSE}
 # Next, prune tree by determining best size via cross-validation.
 cv.res <- cv.tree(tree.mod, FUN = prune.tree)
 cv.res
@@ -222,17 +266,24 @@ if (best.size == 1) {
 }
 # Prune tree.
 pruned <- prune.misclass(tree.mod, best = best.size)
-plot(pruned)
-text(pruned, pretty = 0, cex = 0.7)
 
 # Get probabilities for test set based on pruned tree model.
 preds.pruned <- predict(pruned, newdata = workingc[-train.I,], type = "vector")
 pred.probs.pruned <- as.numeric(preds.pruned[,2])
 # Create and plot ROC curve and get AUC.
 myroc_pruned <- roc(outcome ~ pred.probs.pruned, data = workingc[-train.I,])
+```
+### B1x - Plot pruned tree, ROC and AUC.
+``` {r B1x, echo = FALSE}
+# Plot pruned tree.
+plot(pruned)
+text(pruned, pretty = 0, cex = 0.7)
+# Plot ROC with AUC.
 plot(myroc_pruned)
 myroc_pruned$auc
-
+```
+### B2 - Create table summarizing AUC values for each model assuming different splits via random seed change.
+``` {r B2, echo = FALSE}
 #'Create table summarizing AUC values for each model assuming different
 #' splits via random seed change.
 results <- data.frame(
@@ -242,8 +293,15 @@ results <- data.frame(
   Pruned_AUC = c(0.5635, 0.4997, 0.5419, 0.5996, 0.4398)
 )
 print(results)
+```
+The 5 repeats of this approach do not come to a consensus on which of models are the best, according to AUC. However, in 3 of the repeats, the lasso regression model performed the best according to AUC, meaning it was better in terms of discrimination and optimizing sensitivity and specificity. This approach would benefit from more repeats (using more random splits) to better support the use of any particular model. 
 
-#### Survival Analysis ####
+# C. Survival Analysis
+### C1 - Censoring:
+In this data set, we have censoring because for some patients we cannot ascertain the time of recurrence (event of interest). We know that they have non-recurrence at some time point, but no information on recurrence after that time point. The censored observations would be the patients that have non-recurrence at their given time point while the "event" observations are the patients that have recurrence at their given time points.
+
+### C2i - Report Median Time to Recurrence:
+``` {r C2i, echo = FALSE}
 # Calculate median time to recurrence.
 median_value <- median(workingc$time[which(workingc$status == "1")])
 median_table <- data.frame(
@@ -251,7 +309,9 @@ median_table <- data.frame(
   Value = median_value
 )
 print(median_table)
-
+```
+### C2ii - Create KM "survival" curves for recurrence stratified by lymph nodes. Plot curves.
+``` {r C2ii, echo = FALSE}
 # First name variable appropriately for recognition by function.
 names(workingc)[2] <- "status"
 # Create KM survival curves, stratified by lymph_nodes.
@@ -261,19 +321,26 @@ plot(sf, xlab = "Time From Surgery", ylab = "Recurrence", col = 1:3,
      conf.int = 0.95)
 legend("topright", legend = levels(factor(workingc$lymph_nodes)), 
        col = 1:3, lty = 1, title = "Lymph Node Levels", cex = 0.5)
-
+```
+### C2iii - Check PH assumption via different plots and proceed to log rank test.
+``` {r C2iii, echo = FALSE}
 # Check PH assumption to conduct log rank test.
 plot(survfit(Surv(time, status==1) ~ lymph_nodes, data = workingc), 
      fun = "S")
 # No obvious deviation. Also check cloglog plot.
 plot(survfit(Surv(time, status==1) ~ lymph_nodes, data = workingc), 
      fun = "cloglog")
-# Curves are somewhat parallel, but do not cross over. Proceed.
+print("Curves are somewhat parallel, but do not cross over. Proceed.")
 
 # Log rank test. 
-survdiff(Surv(time, status==1) ~ lymph_nodes, data = workingc)
+survdiff(Surv(time, status==1) ~ lymph_nodes ,data = workingc)
+```
+### C2iv - Interpretation of survival curve findings:
+The median time to recurrence was 16.5 time units, likely days or weeks.
+The result of the log rank test reveals a significant p-value (< 0.05). We reject the null hypothesis that there is no difference in survival between the lymph node groups which provides evidence towards the alternate hypothesis that there is a difference in survival between the lymph node groups.
 
-# Create Cox PH model.
+### C3i - Create Cox PH model to predict recurrence and test for PH assumption. Then examine significant predictors.
+``` {r C3i, echo = FALSE}
 coxmod <- coxph(Surv(time, status==1) ~ radius_mean + texture_mean + 
                   perimeter_mean + area_mean + smoothness_mean + 
                   compactness_mean + concavity_mean + concave_points_mean + 
@@ -284,3 +351,8 @@ coxmod <- coxph(Surv(time, status==1) ~ radius_mean + texture_mean +
 cox.zph(coxmod)
 # No significant values. Proceed to examine significant predictors.
 summary(coxmod)
+```
+### C3ii - Comparison of findings (significant predictors) to Parts A and B:
+In Part A, the significant predictors for time to recurrence were determined to be mean radius, mean smoothness and mean symmetry of breast mass cell nuclei. In Part B, the significant predictors (based on lasso regression, since repeated splits showed mostly best AUC) for recurrence were determined to be mean texture and mean area of breast mass cell nuclei as well as tumour size and number of positive axillary lymph nodes observed at time of surgery. In Part C (Cox PH model), the significant predictors for recurrence were determined to be mean radius, mean perimeter and mean fractal dimension of breast mass cell nuclei as well as number of positive axillary lymph nodes observed at time of surgery.
+
+Since the outcome for Part A was different from Parts B and C, it can be argued that similarities/differences/patterns in predictors between Part A/Part B and Part A/Part C could be due to the different outcomes measured, rather than the actual validity of the predictors. Regardless, between Parts A and C, the only common significant predictor was mean radius of breast mass cell nuclei. Between Parts B and C which measured the same outcome (recurrence), only the number of lymph nodes observed at time of surgery was chosen as a significant predictor between both models used. Given constraints on model size, it can be argued that these common significant predictors are part of the "true" models for prediction of time to recurrence and recurrence.
