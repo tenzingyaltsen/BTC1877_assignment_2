@@ -8,11 +8,15 @@ install.packages("tidyr")
 install.packages("funModeling")
 install.packages("ggplot2")
 install.packages("glmnet")
+install.packages("pROC")
+install.packages("tree")
 library(funModeling)
 library(dplyr)
 library(tidyr)
 library(ggplot2)
 library(glmnet)
+library(pROC)
+library(tree)
 
 # Read data and briefly explore.
 working <- read.csv("bc_data.csv", header = FALSE)
@@ -118,3 +122,120 @@ coef.min
 rownames(coef.min)[coef.min[,1] != 0][-1]
 
 #### Classification ####
+#'Make same data cleaning adjustments as before, but do not remove 
+#' non-recurrence observations.
+workingc <- working[,c(1:13,34,35)]
+workingc$lymph_nodes <- ifelse(is.na(workingc$lymph_nodes), NA, 
+                               ifelse(workingc$lymph_nodes == "0", 0, 
+                                      ifelse(as.integer(workingc$lymph_nodes) < 4, "1-3",
+                                             "4 or more")))
+
+#'Refactor binary outcome, assigning recurrence as "1". Also factor lymph 
+#'nodes variable.
+workingc$outcome <- factor(ifelse(workingc$outcome == "R", 1, 0), 
+                           levels = c(0,1))
+workingc$lymph_nodes <- factor(workingc$lymph_nodes)
+
+# Remove observations with NAs as this will interfere with matrix creation.
+workingc <- workingc[complete.cases(workingc),]
+#'Split the data into training and test, of equal size. Note that the seed
+#' will have to be changed 4 more times, so come back to this code to
+#' complete that particular question.
+set.seed(123)
+train.I <- sample(nrow(workingc), round(nrow(workingc)/2))
+
+# Create matrices (x-values) and responses (y-values) for training.
+x <- model.matrix(outcome ~ radius_mean + texture_mean + perimeter_mean + 
+                     area_mean + smoothness_mean + compactness_mean + 
+                     concavity_mean + concave_points_mean + symmetry_mean +
+                     fractal_dimension_mean + tumour_size + lymph_nodes, 
+                   workingc)[train.I,-1]
+y <- workingc$outcome[train.I]
+
+# Create lasso model, specifying "binomial".
+lasso.mod <- glmnet(x, y, family = "binomial")
+# Plot coefficients of predictors for different values of lambda.
+plot(lasso.mod, label = T, xvar = "lambda")
+#'Cross-validate model using AUC. Default of 10 folds is too large to 
+#' reliably calculate AUC, so deviance used instead.
+cv.lasso <- cv.glmnet(x, y, alpha = 1, family = "binomial", 
+                      type.measure = "auc")
+#'Plot deviances for different lambda values and find minimum lambda that 
+#'provides lowest deviance.
+plot(cv.lasso)
+cv.lasso$lambda.min
+
+# Extract predictors.
+coef.min <- coef(cv.lasso, s = "lambda.min")
+coef.min
+rownames(coef.min)[coef.min[,1] != 0][-1]
+
+#'Test the model using test set and minimum lambda and plot predicted
+#' probabilities using histogram.
+pred.lasso <- as.numeric(predict(lasso.mod, 
+                                 newx = model.matrix(outcome ~ radius_mean + texture_mean + perimeter_mean + 
+                                                       area_mean + smoothness_mean + compactness_mean + 
+                                                       concavity_mean + concave_points_mean + symmetry_mean +
+                                                       fractal_dimension_mean + tumour_size + lymph_nodes, 
+                                                     workingc)[-train.I,-1], 
+                                 s = cv.lasso$lambda.min, 
+                                 type = "response"))
+hist(pred.lasso)
+# Plot the ROC curve.
+myroc_lasso <- roc(outcome ~ pred.lasso, data = workingc[-train.I,])
+plot(myroc_lasso)
+# Extract the AUC, a measure of discrimination.
+auc.lasso <- myroc_lasso$auc
+auc.lasso
+
+# Next create unpruned tree model.
+tree.mod <- tree(outcome ~ radius_mean + texture_mean + perimeter_mean + 
+                   area_mean + smoothness_mean + compactness_mean + 
+                   concavity_mean + concave_points_mean + symmetry_mean +
+                   fractal_dimension_mean + tumour_size + lymph_nodes, 
+                 data = workingc, subset = train.I)
+# Plot tree.
+plot(tree.mod)
+text(tree.mod, pretty = 0, cex = 0.35)
+
+# Get probabilities for test set based on unpruned tree model.
+preds.unpruned <- predict(tree.mod, newdata = workingc[-train.I,], type = "vector")
+pred.probs.unpruned <- as.numeric(preds.unpruned[,2])
+# Create and plot ROC curve and get AUC for unpruned tree.
+myroc_unpruned <- roc(outcome ~ pred.probs.unpruned, data = workingc[-train.I,])
+plot(myroc_unpruned)
+myroc_unpruned$auc
+
+# Next, prune tree by determining best size via cross-validation.
+cv.res <- cv.tree(tree.mod, FUN = prune.tree)
+cv.res
+#'Get best size based on least deviance. Assign value of 2 if it is 1,
+#' according to assignment instructions.
+best.size <- cv.res$size[which.min(cv.res$dev)]
+if (best.size == 1) {
+  best.size <- 2
+}
+# Prune tree.
+pruned <- prune.misclass(tree.mod, best = best.size)
+plot(pruned)
+text(pruned, pretty = 0, cex = 0.7)
+
+# Get probabilities for test set based on pruned tree model.
+preds.pruned <- predict(pruned, newdata = workingc[-train.I,], type = "vector")
+pred.probs.pruned <- as.numeric(preds.pruned[,2])
+# Create and plot ROC curve and get AUC.
+myroc_pruned <- roc(outcome ~ pred.probs.pruned, data = workingc[-train.I,])
+plot(myroc)
+myroc$auc
+
+#'Create table summarizing AUC values for each model assuming different
+#' splits via random seed change.
+results <- data.frame(
+  set_seed = c(123, 234, 345, 456, 567),
+  Lasso_AUC = c(0.5312, 0.5571, 0.6172, 0.6475, 0.6598),
+  Unpruned_AUC = c(0.545, 0.5841, 0.5161, 0.5605, 0.5185),
+  Pruned_AUC = c(0.5709, 0.5709, 0.5709, 0.5709, 0.5709)
+)
+print(results)
+
+#### Survival Analysis ####
