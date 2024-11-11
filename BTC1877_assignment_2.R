@@ -242,8 +242,8 @@ results <- data.frame(
 print(results)
 
 #### Survival Analysis ####
-# Calculate median time to recurrence of entire cohort.
-median_value <- median(workingc$time)
+# Calculate median time to recurrence.
+median_value <- median(workingc$time[which(workingc$status == "1")])
 median_table <- data.frame(
   Statistic = "Median Time to Recurrence",
   Value = median_value
