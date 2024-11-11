@@ -242,7 +242,7 @@ results <- data.frame(
 print(results)
 
 #### Survival Analysis ####
-
+# Calculate median time to recurrence of entire cohort.
 median_value <- median(workingc$time)
 median_table <- data.frame(
   Statistic = "Median Time to Recurrence",
@@ -278,6 +278,7 @@ coxmod <- coxph(Surv(time, status==1) ~ radius_mean + texture_mean +
                   symmetry_mean + fractal_dimension_mean + tumour_size + 
                   lymph_nodes, 
                 data = workingc)
-summary(coxmod)
 # Testing for the PH assumption using the cox.zph() function.
 cox.zph(coxmod)
+# No significant values. Proceed to examine significant predictors.
+summary(coxmod)
