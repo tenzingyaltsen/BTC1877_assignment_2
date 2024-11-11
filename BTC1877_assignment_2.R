@@ -7,10 +7,12 @@ install.packages("dplyr")
 install.packages("tidyr")
 install.packages("funModeling")
 install.packages("ggplot2")
+install.packages("glmnet")
 library(funModeling)
 library(dplyr)
 library(tidyr)
 library(ggplot2)
+library(glmnet)
 
 # Read data and briefly explore.
 working <- read.csv("bc_data.csv", header = FALSE)
@@ -85,3 +87,34 @@ for (var in names(workingr)) {
     print(barchart)
   }
 }
+
+#' Create matrix of feature values. Note that observation with NA 
+#' automatically removed.
+x <- model.matrix(time ~ radius_mean + texture_mean + perimeter_mean +
+                    area_mean + smoothness_mean + compactness_mean + 
+                    concavity_mean + concave_points_mean + symmetry_mean +
+                    fractal_dimension_mean + tumour_size + lymph_nodes,
+                  workingr)[,-1]
+# Create vector with response values, but remove observation with NA.
+y <- workingr$time[!is.na(workingr$lymph_nodes)]
+# Train model, but first remove observation with NA.
+lasso.mod <- glmnet(x, y, family = "gaussian")
+
+# Plot the results against different values of log(lambda).
+plot(lasso.mod, label = T, xvar = "lambda")
+# Coefficients not standardized due to differing units of predictors.
+
+# Decide on an optimal value for lambda using cross-validation.
+set.seed(123)
+cv.lasso <- cv.glmnet(x, y, nfolds = 5)
+# Extract lambda values that gives lowest cross-validated MSE.
+cv.lasso$lambda.min
+# Examine MSE for that value, among other outputs.
+print(cv.lasso)
+# Examine value of features that stay in model when using optimal lambda.
+coef.min <- coef(cv.lasso, s = "lambda.min")
+coef.min
+# Print the list using Dr. Mitsakakis' "awkward" code.
+rownames(coef.min)[coef.min[,1] != 0][-1]
+
+#### Classification ####
