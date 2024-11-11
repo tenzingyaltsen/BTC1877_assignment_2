@@ -111,6 +111,9 @@ plot(lasso.mod, label = T, xvar = "lambda")
 # Decide on an optimal value for lambda using cross-validation.
 set.seed(123)
 cv.lasso <- cv.glmnet(x, y, nfolds = 5)
+#'Plot MSE as a function of lambda (log lambda) to qualitatively assess
+#' for optimal lambda value.
+plot(cv.lasso)
 # Extract lambda values that gives lowest cross-validated MSE.
 cv.lasso$lambda.min
 # Examine MSE for that value, among other outputs.
@@ -225,8 +228,8 @@ preds.pruned <- predict(pruned, newdata = workingc[-train.I,], type = "vector")
 pred.probs.pruned <- as.numeric(preds.pruned[,2])
 # Create and plot ROC curve and get AUC.
 myroc_pruned <- roc(outcome ~ pred.probs.pruned, data = workingc[-train.I,])
-plot(myroc)
-myroc$auc
+plot(myroc_pruned)
+myroc_pruned$auc
 
 #'Create table summarizing AUC values for each model assuming different
 #' splits via random seed change.
@@ -234,7 +237,7 @@ results <- data.frame(
   set_seed = c(123, 234, 345, 456, 567),
   Lasso_AUC = c(0.5312, 0.5571, 0.6172, 0.6475, 0.6598),
   Unpruned_AUC = c(0.545, 0.5841, 0.5161, 0.5605, 0.5185),
-  Pruned_AUC = c(0.5709, 0.5709, 0.5709, 0.5709, 0.5709)
+  Pruned_AUC = c(0.5635, 0.4997, 0.5419, 0.5996, 0.4398)
 )
 print(results)
 
