@@ -239,3 +239,42 @@ results <- data.frame(
 print(results)
 
 #### Survival Analysis ####
+
+median_value <- median(workingc$time)
+median_table <- data.frame(
+  Statistic = "Median Time to Recurrence",
+  Value = median_value
+)
+print(median_table)
+
+# First name variable appropriately for recognition by function.
+names(workingc)[2] <- "status"
+# Create KM surival curves, stratified by lymph_nodes.
+sf <- survfit(Surv(time, status==1) ~ lymph_nodes, data = workingc)
+# Plot curves.
+plot(sf, xlab = "Time From Surgery", ylab = "Recurrence", col = 1:3, 
+     conf.int = 0.95)
+legend("topright", legend = levels(factor(workingc$lymph_nodes)), 
+       col = 1:3, lty = 1, title = "Lymph Node Levels", cex = 0.5)
+
+# Check PH assumption to conduct log rank test.
+plot(survfit(Surv(time, status==1) ~ lymph_nodes, data = workingc), 
+     fun = "S")
+# No obvious deviation. Also check cloglog plot.
+plot(survfit(Surv(time, status==1) ~ lymph_nodes, data = workingc), 
+     fun = "cloglog")
+# Curves are somewhat parallel, but do not cross over. Proceed.
+
+# Log rank test. 
+survdiff(Surv(time, status==1) ~ lymph_nodes ,data = workingc)
+
+# Create Cox PH model.
+coxmod <- coxph(Surv(time, status==1) ~ radius_mean + texture_mean + 
+                  perimeter_mean + area_mean + smoothness_mean + 
+                  compactness_mean + concavity_mean + concave_points_mean + 
+                  symmetry_mean + fractal_dimension_mean + tumour_size + 
+                  lymph_nodes, 
+                data = workingc)
+summary(coxmod)
+# Testing for the PH assumption using the cox.zph() function.
+cox.zph(coxmod)
